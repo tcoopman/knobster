@@ -17,6 +17,7 @@ module Knob : sig
   val location: t -> Coordinate.t
   val color: t -> string
   val transferColor : t -> t -> t
+  val sameColor : t -> t -> bool
   val sameLocation : t -> t -> bool
   val rotationInDegrees: t -> int
 end = struct
@@ -49,6 +50,7 @@ end = struct
     | Orange -> "orange"
 
   let transferColor from to_ = {to_ with color = from.color}
+  let sameColor k1 k2 = k1.color = k2.color
 
   let sameLocation k1 k2 = k1.location = k2.location
   let rotationInDegrees knob = 
@@ -91,8 +93,10 @@ end = struct
     ) board
 end
 
+type state = WaitingForInput | Resolving | Won
 type model = {
-  board: Knob.t list
+  board: Knob.t list;
+  state: state
 }
 
 type msg =
@@ -106,8 +110,20 @@ let init () = ({
     Knob.create Blue West (0, 1);
     Knob.create Red East (1, 0);
     Knob.create Yellow South (1, 1);
-  ]
+    Knob.create Red South (2, 0);
+    Knob.create Orange South (2, 1);
+    Knob.create Blue South (2, 2);
+    Knob.create Green South (0, 2);
+    Knob.create Green South (1, 2);
+  ];
+  state = WaitingForInput
 }, Tea.Cmd.none)
+
+let updateBoard board newKnobs =
+  board
+  |> List.filter (fun k1 -> 
+    List.for_all (fun k2 -> not (Knob.sameLocation k1 k2)) newKnobs)
+  |> List.append newKnobs
 
 let update model = function 
   | KnobClicked knob -> 
@@ -121,12 +137,26 @@ let update model = function
       |> List.map Tea.Cmd.msg
     in
     let newKnobs = (knob :: connected) in
-    Js.log "knob clicked";
-    ({board = model.board
-    |> List.filter (fun k1 -> 
-      List.for_all (fun k2 -> not (Knob.sameLocation k1 k2)) newKnobs)
-    |> List.append newKnobs
-    }, Tea.Cmd.batch newCmds)
+    let newBoard =updateBoard model.board newKnobs in
+    let gameWon = 
+      match model.board with
+      | [] -> true
+      | (hd::rest) -> List.for_all (fun knob -> Knob.sameColor hd knob) rest
+    in
+    begin match (gameWon, newCmds) with
+    | (true, _) -> 
+      (
+        {board = newBoard; state = Won}, 
+        Tea.Cmd.none)
+    | (false, []) -> 
+      (
+        {board = newBoard; state = WaitingForInput}, 
+        Tea.Cmd.batch newCmds)
+    | (false, _) -> 
+      (
+        {board = newBoard; state = Resolving}, 
+        Tea.Cmd.batch newCmds)
+    end
 
 let viewKnob knob = 
   let module Svg = Tea.Svg in
@@ -153,9 +183,15 @@ let viewBoard board =
   )
 
 let view model =
+  let state = match model.state with
+  | WaitingForInput -> "waiting for input"
+  | Won -> "won"
+  | Resolving -> "resolving"
+  in
   div
     []
     [
+      text state;
       viewBoard model.board
     ]
 
