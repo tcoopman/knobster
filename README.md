@@ -1,1 +1,3 @@
-# Bucklescript The Elm Architecture Starter kit with webpack
+# Knobster clone
+
+clone of https://gitlab.com/MazeChaZer/knobster
