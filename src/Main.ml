@@ -9,8 +9,9 @@ end
 type rotation = North | East | South | West
 module Knob : sig
   type t
+  type color = Yellow | Red | Green | Blue | Orange
 
-  val create : string -> rotation -> Coordinate.t -> t
+  val create : color -> rotation -> Coordinate.t -> t
   val connected : t list -> t -> t list
   val rotate : t -> t
   val location: t -> Coordinate.t
@@ -18,8 +19,9 @@ module Knob : sig
   val onLocation : t -> Coordinate.t -> bool
   val rotationInDegrees: t -> int
 end = struct
+  type color = Yellow | Red | Green | Blue | Orange
   type t = {
-    color: string;
+    color: color;
     rotation: rotation;
     location: Coordinate.t;
   }
@@ -36,7 +38,15 @@ end = struct
     {knob with rotation = newRotation}
 
   let location knob = knob.location
-  let color knob = knob.color
+
+  let color knob = 
+    match knob.color with
+    | Yellow -> "yellow"
+    | Red -> "red"
+    | Green -> "green"
+    | Blue -> "blue"
+    | Orange -> "orange"
+
   let onLocation knob coordinate = knob.location = coordinate
   let rotationInDegrees knob = 
     match knob.rotation with
@@ -86,16 +96,18 @@ type msg =
 
 let init () = {
   board = [
-    Knob.create "green" North (0, 0);
-    Knob.create "blue" West (0, 1);
-    Knob.create "red" East (1, 0);
-    Knob.create "yellow" South (1, 1);
+    Knob.create Green North (0, 0);
+    Knob.create Blue West (0, 1);
+    Knob.create Red East (1, 0);
+    Knob.create Yellow South (1, 1);
   ]
 }
 
 let update model = function 
   | KnobClicked coordinate -> 
     let knob = List.find (fun knob -> Knob.onLocation knob coordinate) model.board in
+    let connected = Knob.connected model.board knob in
+
     {board = model.board
     |> List.filter (fun knob -> not (Knob.onLocation knob coordinate))
     |> List.append [Knob.rotate knob]
