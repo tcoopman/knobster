@@ -16,7 +16,8 @@ module Knob : sig
   val rotate : t -> t
   val location: t -> Coordinate.t
   val color: t -> string
-  val onLocation : t -> Coordinate.t -> bool
+  val transferColor : t -> t -> t
+  val sameLocation : t -> t -> bool
   val rotationInDegrees: t -> int
 end = struct
   type color = Yellow | Red | Green | Blue | Orange
@@ -47,7 +48,9 @@ end = struct
     | Blue -> "blue"
     | Orange -> "orange"
 
-  let onLocation knob coordinate = knob.location = coordinate
+  let transferColor from to_ = {to_ with color = from.color}
+
+  let sameLocation k1 k2 = k1.location = k2.location
   let rotationInDegrees knob = 
     match knob.rotation with
     | North -> 0
@@ -80,8 +83,11 @@ end = struct
     let coordinateOne = mapCoordinate knob.location one in
     let coordinateTwo = mapCoordinate knob.location two in
     List.filter (fun k -> (
-      (k.location = coordinateOne && (oppositeRotation one k.rotation)) ||
-      (k.location = coordinateTwo && (oppositeRotation two k.rotation)))
+      let (oneOther, twoOther) = transformToDirections k.rotation in
+      (k.location = coordinateOne && (oppositeRotation one oneOther)) ||
+      (k.location = coordinateOne && (oppositeRotation one twoOther)) ||
+      (k.location = coordinateTwo && (oppositeRotation two oneOther)) ||
+      (k.location = coordinateTwo && (oppositeRotation two twoOther)))
     ) board
 end
 
@@ -90,7 +96,7 @@ type model = {
 }
 
 type msg =
-  | KnobClicked of Coordinate.t
+  | KnobClicked of Knob.t
   [@@bs.deriving {accessors}]
 
 
@@ -104,13 +110,17 @@ let init () = {
 }
 
 let update model = function 
-  | KnobClicked coordinate -> 
-    let knob = List.find (fun knob -> Knob.onLocation knob coordinate) model.board in
-    let connected = Knob.connected model.board knob in
-
+  | KnobClicked knob -> 
+    let knob = Knob.rotate knob in
+    let connected = 
+      Knob.connected model.board knob
+      |> List.map (Knob.transferColor knob)
+    in
+    let newKnobs = (knob :: connected) in
     {board = model.board
-    |> List.filter (fun knob -> not (Knob.onLocation knob coordinate))
-    |> List.append [Knob.rotate knob]
+    |> List.filter (fun k1 -> 
+      List.for_all (fun k2 -> not (Knob.sameLocation k1 k2)) newKnobs)
+    |> List.append newKnobs
     }
 
 let viewKnob knob = 
@@ -125,7 +135,7 @@ let viewKnob knob =
     "rotate(" ^ string_of_int (degrees) ^ ", " ^ string_of_int (x * size * 2 + size) ^ ", " ^ string_of_int (y * size * 2 + size) ^ ")" 
   in
   let transform = rotate ^ " " ^ translate in
-  Svg.g [onClick (knobClicked (x, y)); SvgA.transform transform] [
+  Svg.g [onClick (knobClicked knob); SvgA.transform transform] [
     Svg.circle [SvgA.cx (toPx size); SvgA.cy (toPx size); SvgA.r (toPx size); SvgA.fill (Knob.color knob)] [];
     Svg.path [SvgA.d "M 50 0 V 50 H 100"; SvgA.stroke "black"; SvgA.strokeWidth "5"; SvgA.fill "transparent"] []
   ]
