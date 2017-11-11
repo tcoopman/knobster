@@ -52,9 +52,9 @@ end = struct
   | West -> (West, North)
 
   let mapCoordinate (x, y) = function
-  | North -> (x, y+1)
+  | North -> (x, y-1)
   | East -> (x+1, y)
-  | South -> (x, y-1)
+  | South -> (x, y+1)
   | West -> (x-1, y)
 
   let oppositeRotation r1 r2 =
