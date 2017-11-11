@@ -100,14 +100,14 @@ type msg =
   [@@bs.deriving {accessors}]
 
 
-let init () = {
+let init () = ({
   board = [
     Knob.create Green North (0, 0);
     Knob.create Blue West (0, 1);
     Knob.create Red East (1, 0);
     Knob.create Yellow South (1, 1);
   ]
-}
+}, Tea.Cmd.none)
 
 let update model = function 
   | KnobClicked knob -> 
@@ -116,12 +116,17 @@ let update model = function
       Knob.connected model.board knob
       |> List.map (Knob.transferColor knob)
     in
+    let newCmds = 
+      List.map knobClicked connected
+      |> List.map Tea.Cmd.msg
+    in
     let newKnobs = (knob :: connected) in
-    {board = model.board
+    Js.log "knob clicked";
+    ({board = model.board
     |> List.filter (fun k1 -> 
       List.for_all (fun k2 -> not (Knob.sameLocation k1 k2)) newKnobs)
     |> List.append newKnobs
-    }
+    }, Tea.Cmd.batch newCmds)
 
 let viewKnob knob = 
   let module Svg = Tea.Svg in
@@ -155,8 +160,9 @@ let view model =
     ]
 
 let main =
-  beginnerProgram { 
-    model = init (); 
+  Tea.App.standardProgram { 
+    init;
     update;
     view;
+    subscriptions = fun _ -> Tea.Sub.none;
   }
