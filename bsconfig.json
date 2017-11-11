@@ -1,11 +1,17 @@
 {
   "name": "bucklescript-tea-starter-kit-webpack",
   "version": "0.1.0",
-  "sources": [
-    "src"
-  ],
-  "package-specs": [{"module": "es6", "in-source": true}],
+  "sources": [{
+    "dir": "src"
+  }, {
+    "dir": "__tests__",
+    "type": "dev"
+  }],
+  "package-specs": [{
+    "module": "commonjs",
+    "in-source": true
+  }],
   "suffix": ".bs.js",
-  "bs-dependencies": ["bucklescript-tea"],
-  "bsc-flags": [ "-bs-super-errors -no-alias-deps", "-color", "always", "-w", "-40+6+7+27+32..39+44+45", "-w @8"]
+  "bs-dependencies": ["bucklescript-tea", "bs-jest"],
+  "bsc-flags": ["-bs-super-errors -no-alias-deps", "-color", "always", "-w", "-40+6+7+27+32..39+44+45", "-w @8"]
 }

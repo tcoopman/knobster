@@ -9,6 +9,7 @@
     "build:js": "webpack --config webpack.prod.js --optimize-minimize",
     "watch:bsb": "bsb -make-world -w",
     "start": "run-p watch:bsb webpack",
+    "test": "jest",
     "webpack": "webpack-dev-server --content-base release"
   },
   "keywords": [
@@ -16,6 +17,7 @@
   ],
   "license": "MIT",
   "devDependencies": {
+    "bs-jest": "^0.2.0",
     "bs-platform": "^2.0.0",
     "bucklescript-tea": "git://github.com/tcoopman/bucklescript-tea.git#patch-3",
     "npm-run-all": "^4.1.0",
