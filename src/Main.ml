@@ -7,14 +7,76 @@ module Coordinate = struct
 end
 
 type rotation = North | East | South | West
-type knob = {
-  color: string;
-  rotation: rotation;
-  location: Coordinate.t;
-}
+module Knob : sig
+  type t
+
+  val create : string -> rotation -> Coordinate.t -> t
+  val connected : t list -> t -> t list
+  val rotate : t -> t
+  val location: t -> Coordinate.t
+  val color: t -> string
+  val onLocation : t -> Coordinate.t -> bool
+  val rotationInDegrees: t -> int
+end = struct
+  type t = {
+    color: string;
+    rotation: rotation;
+    location: Coordinate.t;
+  }
+
+  let create color rotation location = {color; rotation; location}
+
+  let rotate knob = 
+    let newRotation = match knob.rotation with
+    | North -> East
+    | East -> South
+    | South -> West
+    | West -> North
+    in
+    {knob with rotation = newRotation}
+
+  let location knob = knob.location
+  let color knob = knob.color
+  let onLocation knob coordinate = knob.location = coordinate
+  let rotationInDegrees knob = 
+    match knob.rotation with
+    | North -> 0
+    | East -> 90
+    | South -> 180
+    | West -> 270
+
+  let transformToDirections = function
+  | North -> (North, East)
+  | East -> (East, South)
+  | South -> (South, West)
+  | West -> (West, North)
+
+  let mapCoordinate (x, y) = function
+  | North -> (x, y+1)
+  | East -> (x+1, y)
+  | South -> (x, y-1)
+  | West -> (x-1, y)
+
+  let oppositeRotation r1 r2 =
+    match (r1, r2) with
+    | (North, South) ->  true
+    | (East, West) ->  true
+    | (South, North) ->  true
+    | (West, East) ->  true
+    | _ ->  false
+
+  let connected board knob =
+    let (one, two) = transformToDirections knob.rotation in
+    let coordinateOne = mapCoordinate knob.location one in
+    let coordinateTwo = mapCoordinate knob.location two in
+    List.filter (fun k -> (
+      (k.location = coordinateOne && (oppositeRotation one k.rotation)) ||
+      (k.location = coordinateTwo && (oppositeRotation two k.rotation)))
+    ) board
+end
 
 type model = {
-  board: knob list
+  board: Knob.t list
 }
 
 type msg =
@@ -24,62 +86,35 @@ type msg =
 
 let init () = {
   board = [
-    {color = "green"; rotation = North; location = (0, 0)};
-    {color = "blue"; rotation = West; location = (0, 1)};
-    {color = "red"; rotation = West; location = (1, 0)};
-    {color = "yellow"; rotation = West; location = (1, 1)}
+    Knob.create "green" North (0, 0);
+    Knob.create "blue" West (0, 1);
+    Knob.create "red" East (1, 0);
+    Knob.create "yellow" South (1, 1);
   ]
 }
 
 let update model = function 
   | KnobClicked coordinate -> 
-    let findNeighbours (x, y) =
-      let neighbourCoordinates = [(x, y -1); (x+1, y); (x, y +1); (x -1, y)] in
-      neighbourCoordinates
-      |> List.map (fun coo -> List.filter (fun knob -> knob.location = coo) model.board) 
-      |> List.flatten
-    in
-    let isConnected knob1 knob2 =
-      match (knob1.location, knob2.location, knob1.rotation, knob2.rotation) with
-      | ((x1, y1), (x2, y2), East, North) when x1 = x2 && y1 +1 = y2 -> true
-      | ((x1, y1), (x2, y2), East, West) when x1 = x2 && y1 +1 = y2 -> true
-      | ((x1, y1), (x2, y2), South, North) when x1 = x2 && y1 +1 = y2 -> true
-      | ((x1, y1), (x2, y2), South, West) when x1 = x2 && y1 +1 = y2 -> true
-      | _ -> false
-    in
-    let knob = List.find (fun knob -> knob.location = coordinate) model.board in
-    let newRotation = match knob.rotation with
-    | North -> East
-    | East -> South
-    | South -> West
-    | West -> North
-    in
-    let newKnob = {knob with rotation = newRotation} in
-    Js.log (findNeighbours coordinate |> List.map (fun other -> isConnected newKnob other));
+    let knob = List.find (fun knob -> Knob.onLocation knob coordinate) model.board in
     {board = model.board
-    |> List.filter (fun knob -> knob.location <> coordinate)
-    |> List.append [newKnob]
+    |> List.filter (fun knob -> not (Knob.onLocation knob coordinate))
+    |> List.append [Knob.rotate knob]
     }
 
 let viewKnob knob = 
   let module Svg = Tea.Svg in
   let module SvgA = Tea.Svg.Attributes in
-  let (x,y) = knob.location in
+  let (x,y) = Knob.location knob in
   let size = 50 in
   let toPx i = (string_of_int i) ^ "px" in
   let translate = "translate(" ^ string_of_int (x * size * 2) ^ ", " ^ string_of_int (y * size * 2) ^ ")" in
   let rotate = 
-    let degrees = match knob.rotation with
-    | North -> 0
-    | East -> 90
-    | South -> 180
-    | West -> 270
-    in
+    let degrees = Knob.rotationInDegrees knob in
     "rotate(" ^ string_of_int (degrees) ^ ", " ^ string_of_int (x * size * 2 + size) ^ ", " ^ string_of_int (y * size * 2 + size) ^ ")" 
   in
   let transform = rotate ^ " " ^ translate in
   Svg.g [onClick (knobClicked (x, y)); SvgA.transform transform] [
-    Svg.circle [SvgA.cx (toPx size); SvgA.cy (toPx size); SvgA.r (toPx size); SvgA.fill knob.color] [];
+    Svg.circle [SvgA.cx (toPx size); SvgA.cy (toPx size); SvgA.r (toPx size); SvgA.fill (Knob.color knob)] [];
     Svg.path [SvgA.d "M 50 0 V 50 H 100"; SvgA.stroke "black"; SvgA.strokeWidth "5"; SvgA.fill "transparent"] []
   ]
 
