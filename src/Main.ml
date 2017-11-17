@@ -2,6 +2,11 @@ open Tea.App
 
 open Tea.Html
 
+let pick (t:'a list) : 'a = 
+  let length = List.length t in
+  let i = Random.int length in
+  List.nth t i
+
 module Coordinate = struct
   type t = int * int
 end
@@ -12,6 +17,7 @@ module Knob : sig
   type rotation = North | East | South | West
 
   val create : color -> rotation -> Coordinate.t -> t
+  val random : Coordinate.t -> t
   val connected : t list -> t -> t list
   val rotate : t -> t
   val location: t -> Coordinate.t
@@ -45,6 +51,10 @@ end = struct
     | _ -> invalid_arg "degrees not modulo 90"
 
   let create color rotation location = {color; degrees =(rotationInDegrees rotation); location}
+  let random location =
+    let rotation = pick [North; East; South; West] in
+    let color = pick [Yellow; Red; Green; Blue; Orange] in
+    create color rotation location
 
   let rotate knob = 
     {knob with degrees = knob.degrees + 90}
@@ -118,20 +128,23 @@ type msg =
   [@@bs.deriving {accessors}]
 
 
-let init () = ({
-  board = [
-    Knob.create Green North (0, 0);
-    Knob.create Blue West (0, 1);
-    Knob.create Red East (1, 0);
-    Knob.create Yellow South (1, 1);
-    Knob.create Red South (2, 0);
-    Knob.create Orange South (2, 1);
-    Knob.create Blue South (2, 2);
-    Knob.create Green South (0, 2);
-    Knob.create Green South (1, 2);
-  ];
-  state = WaitingForInput
-}, Tea.Cmd.none)
+let init () = 
+  let coordinates = 
+    let rec zippedRange xS xE yS yE = 
+      match (xS = xE, yS = yE) with
+      | true, true -> [(xS, yS)]
+      | true, false -> (xS, yS) :: (zippedRange 0 xE (yS+1) yE)
+      | false, true -> (xS, yS) :: (zippedRange (xS+1) xE yS yE)
+      | false, false -> (xS, yS) :: (zippedRange (xS+1) xE yS yE)
+    in
+    zippedRange 0 9 0 9
+  in
+  let board = List.map Knob.random coordinates in
+  ({
+    board;
+    state = WaitingForInput
+  }, Tea.Cmd.none
+  )
 
 
 let propagateKnobRotation board knob =
@@ -197,11 +210,13 @@ let viewKnob knob =
   let module Svg = Tea.Svg in
   let module SvgA = Tea.Svg.Attributes in
   let size = 50 in
+  let (x,y) = Knob.location knob in
   let toPx i = (string_of_int i) ^ "px" in
   let style = "transform:rotate(" ^ (string_of_int (Knob.rotationInDegrees knob)) ^ "deg);transition:200ms" in
   Svg.svg [SvgA.width (toPx (size *2)); SvgA.height (toPx (size * 2)); SvgA.style style; onClick (knobClicked knob)] [
     Svg.circle [SvgA.cx (toPx size); SvgA.cy (toPx size); SvgA.r (toPx size); SvgA.fill (Knob.color knob)] [];
     Svg.path [SvgA.d "M 50 0 V 50 H 100"; SvgA.stroke "black"; SvgA.strokeWidth "5"; SvgA.fill "transparent"] [];
+    Svg.text' [SvgA.x (toPx size); SvgA.y (toPx size); SvgA.fontSize "20"] [Svg.text (string_of_int x ^ ", " ^ string_of_int y)]
   ]
 
 
