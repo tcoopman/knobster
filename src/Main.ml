@@ -101,6 +101,7 @@ type model = {
 
 type msg =
   | KnobClicked of Knob.t
+  | KnobRotationPropagated of Knob.t
   [@@bs.deriving {accessors}]
 
 
@@ -125,38 +126,58 @@ let updateBoard board newKnobs =
     List.for_all (fun k2 -> not (Knob.sameLocation k1 k2)) newKnobs)
   |> List.append newKnobs
 
+let propagateKnobRotation board knob =
+  let knob = Knob.rotate knob in
+  let connected = 
+    Knob.connected board knob
+    |> List.map (Knob.transferColor knob)
+  in
+  let newCmds = 
+    match connected with
+    | [] -> None
+    | _ -> Some (Tea.Cmd.call (fun callbacks ->
+      Js.Global.setTimeout (fun () -> 
+        (List.iter (fun knob ->
+          !callbacks.enqueue (knobRotationPropagated knob)
+        ) connected)
+      ) 200 |> ignore
+    ))
+  in
+  let newKnobs = (knob :: connected) in
+  let newBoard =updateBoard board newKnobs in
+  let gameWon = 
+    match board with
+    | [] -> true
+    | (hd::rest) -> List.for_all (fun knob -> Knob.sameColor hd knob) rest
+  in
+  begin match (gameWon, newCmds) with
+  | (true, _) -> 
+    (
+      {board = newBoard; state = Won}, 
+      Tea.Cmd.none)
+  | (false, None) -> 
+    (
+      {board = newBoard; state = WaitingForInput}, 
+      Tea.Cmd.none)
+  | (false, Some cmd) -> 
+    (
+      {board = newBoard; state = Resolving}, 
+      Tea.Cmd.batch [cmd])
+  end
+
+
 let update model = function 
   | KnobClicked knob -> 
-    let knob = Knob.rotate knob in
-    let connected = 
-      Knob.connected model.board knob
-      |> List.map (Knob.transferColor knob)
-    in
-    let newCmds = 
-      List.map knobClicked connected
-      |> List.map Tea.Cmd.msg
-    in
-    let newKnobs = (knob :: connected) in
-    let newBoard =updateBoard model.board newKnobs in
-    let gameWon = 
-      match model.board with
-      | [] -> true
-      | (hd::rest) -> List.for_all (fun knob -> Knob.sameColor hd knob) rest
-    in
-    begin match (gameWon, newCmds) with
-    | (true, _) -> 
-      (
-        {board = newBoard; state = Won}, 
-        Tea.Cmd.none)
-    | (false, []) -> 
-      (
-        {board = newBoard; state = WaitingForInput}, 
-        Tea.Cmd.batch newCmds)
-    | (false, _) -> 
-      (
-        {board = newBoard; state = Resolving}, 
-        Tea.Cmd.batch newCmds)
+    begin match model.state with
+    | WaitingForInput -> propagateKnobRotation model.board knob
+    | Won -> (model, Tea.Cmd.none)
+    | Resolving -> (model, Tea.Cmd.none)
     end
+  | KnobRotationPropagated knob ->
+    match model.state with
+    | WaitingForInput -> (model, Tea.Cmd.none)
+    | Won -> (model, Tea.Cmd.none)
+    | Resolving -> propagateKnobRotation model.board knob
 
 let viewKnob knob = 
   let module Svg = Tea.Svg in
