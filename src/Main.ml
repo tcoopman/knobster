@@ -6,10 +6,10 @@ module Coordinate = struct
   type t = int * int
 end
 
-type rotation = North | East | South | West
 module Knob : sig
   type t
   type color = Yellow | Red | Green | Blue | Orange
+  type rotation = North | East | South | West
 
   val create : color -> rotation -> Coordinate.t -> t
   val connected : t list -> t -> t list
@@ -20,24 +20,34 @@ module Knob : sig
   val sameColor : t -> t -> bool
   val sameLocation : t -> t -> bool
   val rotationInDegrees: t -> int
+  val compare : t -> t -> int
 end = struct
   type color = Yellow | Red | Green | Blue | Orange
+  type rotation = North | East | South | West
   type t = {
     color: color;
-    rotation: rotation;
+    degrees: int;
     location: Coordinate.t;
   }
 
-  let create color rotation location = {color; rotation; location}
+  let rotationInDegrees rotation =
+    match rotation with
+    | North -> 0
+    | East -> 90
+    | South -> 180
+    | West -> 270
+  let degreesToRotation degrees =
+    match (degrees mod 360) with
+    | 0 -> North
+    | 90 -> East
+    | 180 -> South
+    | 270 -> West
+    | _ -> invalid_arg "degrees not modulo 90"
+
+  let create color rotation location = {color; degrees =(rotationInDegrees rotation); location}
 
   let rotate knob = 
-    let newRotation = match knob.rotation with
-    | North -> East
-    | East -> South
-    | South -> West
-    | West -> North
-    in
-    {knob with rotation = newRotation}
+    {knob with degrees = knob.degrees + 90}
 
   let location knob = knob.location
 
@@ -53,14 +63,11 @@ end = struct
   let sameColor k1 k2 = k1.color = k2.color
 
   let sameLocation k1 k2 = k1.location = k2.location
-  let rotationInDegrees knob = 
-    match knob.rotation with
-    | North -> 0
-    | East -> 90
-    | South -> 180
-    | West -> 270
+  let rotationInDegrees knob = knob.degrees
 
-  let transformToDirections = function
+  let transformToDirections degrees =
+    let rotation = degreesToRotation degrees in
+    match rotation with
   | North -> (North, East)
   | East -> (East, South)
   | South -> (South, West)
@@ -81,16 +88,22 @@ end = struct
     | _ ->  false
 
   let connected board knob =
-    let (one, two) = transformToDirections knob.rotation in
+    let (one, two) = transformToDirections knob.degrees in
     let coordinateOne = mapCoordinate knob.location one in
     let coordinateTwo = mapCoordinate knob.location two in
     List.filter (fun k -> (
-      let (oneOther, twoOther) = transformToDirections k.rotation in
+      let (oneOther, twoOther) = transformToDirections k.degrees in
       (k.location = coordinateOne && (oppositeRotation one oneOther)) ||
       (k.location = coordinateOne && (oppositeRotation one twoOther)) ||
       (k.location = coordinateTwo && (oppositeRotation two oneOther)) ||
       (k.location = coordinateTwo && (oppositeRotation two twoOther)))
     ) board
+
+  let compare knobA knobB =
+    let (x1, y1) = knobA.location in
+    let (x2, y2) = knobB.location in
+    let compareY = compare y1 y2 in
+    if compareY == 0 then compare x1 x2 else compareY
 end
 
 type state = WaitingForInput | Resolving | Won
@@ -120,14 +133,15 @@ let init () = ({
   state = WaitingForInput
 }, Tea.Cmd.none)
 
+
+let propagateKnobRotation board knob =
+  let knob = Knob.rotate knob in
 let updateBoard board newKnobs =
   board
   |> List.filter (fun k1 -> 
     List.for_all (fun k2 -> not (Knob.sameLocation k1 k2)) newKnobs)
   |> List.append newKnobs
-
-let propagateKnobRotation board knob =
-  let knob = Knob.rotate knob in
+  in
   let connected = 
     Knob.connected board knob
     |> List.map (Knob.transferColor knob)
@@ -182,25 +196,22 @@ let update model = function
 let viewKnob knob = 
   let module Svg = Tea.Svg in
   let module SvgA = Tea.Svg.Attributes in
-  let (x,y) = Knob.location knob in
   let size = 50 in
   let toPx i = (string_of_int i) ^ "px" in
-  let translate = "translate(" ^ string_of_int (x * size * 2) ^ ", " ^ string_of_int (y * size * 2) ^ ")" in
-  let rotate = 
-    let degrees = Knob.rotationInDegrees knob in
-    "rotate(" ^ string_of_int (degrees) ^ ", " ^ string_of_int (x * size * 2 + size) ^ ", " ^ string_of_int (y * size * 2 + size) ^ ")" 
-  in
-  let transform = rotate ^ " " ^ translate in
-  Svg.g [onClick (knobClicked knob); SvgA.transform transform] [
+  let style = "transform:rotate(" ^ (string_of_int (Knob.rotationInDegrees knob)) ^ "deg);transition:200ms" in
+  Svg.svg [SvgA.width (toPx (size *2)); SvgA.height (toPx (size * 2)); SvgA.style style; onClick (knobClicked knob)] [
     Svg.circle [SvgA.cx (toPx size); SvgA.cy (toPx size); SvgA.r (toPx size); SvgA.fill (Knob.color knob)] [];
-    Svg.path [SvgA.d "M 50 0 V 50 H 100"; SvgA.stroke "black"; SvgA.strokeWidth "5"; SvgA.fill "transparent"] []
+    Svg.path [SvgA.d "M 50 0 V 50 H 100"; SvgA.stroke "black"; SvgA.strokeWidth "5"; SvgA.fill "transparent"] [];
   ]
+
 
 let viewBoard board =
   let module Svg = Tea.Svg in
   let module SvgA = Tea.Svg.Attributes in
-  Svg.svg [SvgA.width "500px"; SvgA.height "500px"] (
-    List.map viewKnob board
+  div [class' "board"] (
+    board
+    |> List.sort Knob.compare
+    |> List.map viewKnob 
   )
 
 let view model =
@@ -209,10 +220,10 @@ let view model =
   | Won -> "won"
   | Resolving -> "resolving"
   in
-  div
+  main
     []
     [
-      text state;
+      div [] [ text state];
       viewBoard model.board
     ]
 
